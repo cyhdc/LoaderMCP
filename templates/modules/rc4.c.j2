@@ -1,0 +1,29 @@
+// RC4加密解密算法（对称加密，加密解密同一函数）
+void RC4Crypt(unsigned char* data, unsigned int dataLen, unsigned char* key, unsigned int keyLen) {
+    unsigned char s[256], k[256], temp;
+    int i, j;
+
+    // 初始化S盒和K盒
+    for (i = 0; i < 256; i++) {
+        s[i] = i;
+        k[i] = key[i % keyLen];  // 密钥循环使用
+    }
+
+    // 打乱S盒
+    for (i = 0, j = 0; i < 256; i++) {
+        j = (j + s[i] + k[i]) % 256;
+        temp = s[i];
+        s[i] = s[j];
+        s[j] = temp;
+    }
+
+    // 加密/解密数据
+    for (unsigned int x = 0, i = 0, j = 0; x < dataLen; x++) {
+        i = (i + 1) % 256;
+        j = (j + s[i]) % 256;
+        temp = s[i];
+        s[i] = s[j];
+        s[j] = temp;
+        data[x] ^= s[(s[i] + s[j]) % 256];  // 异或操作
+    }
+}

