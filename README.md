@@ -117,7 +117,7 @@ python3 loader.py
   "mcpServers": {
     "loaderMCP": {
       "command": "python3",
-      "args": ["e:\\peixun\\MCP\\loaderMCP\\loader.py"]
+      "args": ["e:\\xxx\\xxx\\loaderMCP\\loader.py"]
     }
   }
 }
@@ -202,7 +202,7 @@ python3 user_config_test.py
 | shellcode_path | string | "beacon.bin" | Shellcode 文件路径 |
 | encrypt_shellcode | bool | false | 是否需要解密（文件已加密） |
 | encryption_key | string | null | 解密密钥（加密时必填） |
-| arch | string | "x64" | 架构（x86/x64） |
+| arch | string | "x64" | 架构（x64） |
 | load_method | string | "Dynamic Load" | 加载方式（见下表） |
 | sacrificial_dll | string | "C:\\Windows\\System32\\combase.dll" | 牺牲DLL路径（模块踩踏用） |
 | enable_debug | bool | false | 启用调试输出 |
@@ -216,7 +216,7 @@ python3 user_config_test.py
 
 ### 支持的加载方式
 
-#### x64 架构（14种）- ✅ **全部测试通过**
+#### x64 架构（14种）- 
 - CreateThreadpoolWait Load - 线程池等待方式
 - Fiber Load - 纤程加载方式
 - NtTestAlert Load - NtTestAlert函数方式
@@ -240,7 +240,6 @@ python3 user_config_test.py
 # 配置
 config = {
     "shellcode_path": "beacon.bin",
-    "arch": "x64",
     "load_method": "Dynamic Load",
     "enable_debug": True
 }
