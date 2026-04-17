@@ -1,8 +1,0 @@
-Metadata-Version: 2.1
-Name: mcpserver
-Version: 0.1.0
-Summary: Add your description here
-Requires-Python: >=3.13
-Description-Content-Type: text/markdown
-Requires-Dist: mcp[cli]>=1.20.0
-Requires-Dist: jinja2>=3.0.0
